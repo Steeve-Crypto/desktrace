@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DeskTrace</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="mark"></span>
+      <div>
+        <h1>DeskTrace</h1>
+        <p class="sub">Local time machine. Nothing leaves this machine.</p>
+      </div>
+    </div>
+    <div class="actions">
+      <input id="note" type="text" maxlength="200" placeholder="Optional note — before reboot, after meeting…" />
+      <button id="capture" type="button">Capture now</button>
+    </div>
+  </header>
+  <section class="toolbar">
+    <input id="search" type="search" placeholder="Search notes, apps, window titles" />
+    <div id="stats" class="stats">loading…</div>
+  </section>
+  <main id="timeline" class="timeline"></main>
+  <aside id="detail" class="detail hidden">
+    <button class="close" id="close" type="button">Close</button>
+    <img id="shot" alt="Snapshot" />
+    <div class="meta">
+      <h2 id="detail-title">Snapshot</h2>
+      <p id="detail-time"></p>
+      <p id="detail-note"></p>
+      <p id="detail-focus"></p>
+      <h3>Apps</h3>
+      <ul id="app-list"></ul>
+      <div class="detail-actions">
+        <button id="plan" type="button">Restore plan</button>
+        <button id="del" class="danger" type="button">Delete</button>
+      </div>
+      <pre id="plan-out" class="plan"></pre>
+    </div>
+  </aside>
+  <script src="/app.js"></script>
+</body>
+</html>
