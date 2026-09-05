@@ -1,5 +1,9 @@
 # DeskTrace
 
+<p>
+  <img src="brand/wordmark.svg" alt="DeskTrace" height="72" />
+</p>
+
 Local-first desktop time machine.
 
 **Stack: Tauri 2 + Rust.** Capture apps, screenshot, clipboard, and opt-in browser tabs. Restore later. Nothing leaves the machine.
@@ -23,6 +27,7 @@ src-tauri/          Rust + Tauri 2 native app
   src/tray.rs       system tray + hide-on-close
 static/             timeline UI loaded in the webview
 extension/          MV3 companion — localhost only, no profile scrape
+brand/              logo + wordmark
 ```
 
 ## Quick start (the real app)
