@@ -20,7 +20,8 @@ function fmt(iso) {
 async function loadStats() {
   const s = await j("/api/stats");
   const mb = (s.shots_bytes / (1024 * 1024)).toFixed(2);
-  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${s.data_dir}`;
+  const tabs = s.tabs_fresh ? `${s.tab_count} tabs cached` : "no fresh tabs";
+  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${tabs} · ${s.data_dir}`;
 }
 
 async function loadList() {
@@ -39,7 +40,7 @@ async function loadList() {
       <img src="/api/snapshots/${item.id}/shot" alt="" />
       <div class="body">
         <h3>${item.note || item.focused || "Snapshot #" + item.id}</h3>
-        <p>${fmt(item.created_at)} · ${item.apps.length} apps${item.placeholder ? " · placeholder frame" : ""}</p>
+        <p>${fmt(item.created_at)} · ${item.apps.length} apps · ${(item.tabs || []).length} tabs${item.placeholder ? " · placeholder frame" : ""}</p>
       </div>`;
     card.onclick = () => openDetail(item.id);
     timeline.appendChild(card);
@@ -58,6 +59,10 @@ async function openDetail(id) {
   document.getElementById("app-list").innerHTML = item.apps
     .map((a) => `<li>${a.name}</li>`)
     .join("");
+  const tabs = item.tabs || [];
+  document.getElementById("tab-list").innerHTML = tabs.length
+    ? tabs.map((t) => `<li>${t.active ? "● " : ""}${t.title || t.url}<br /><span class="url">${t.url || ""}</span></li>`).join("")
+    : "<li>No tabs. Load the extension and push first.</li>";
   document.getElementById("plan-out").textContent = "";
 }
 
