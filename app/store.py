@@ -118,6 +118,11 @@ class Store:
         path = self.data_dir / "latest_tabs.json"
         path.write_text(json.dumps(payload), encoding="utf-8")
 
+    def clear_latest_tabs(self) -> None:
+        path = self.data_dir / "latest_tabs.json"
+        if path.exists():
+            path.unlink()
+
     def load_latest_tabs(self, max_age_seconds: int = 120) -> list[dict[str, Any]]:
         path = self.data_dir / "latest_tabs.json"
         if not path.exists():
@@ -138,7 +143,11 @@ class Store:
             except ValueError:
                 return []
         tabs = payload.get("tabs")
-        return tabs if isinstance(tabs, list) else []
+        if not isinstance(tabs, list):
+            return []
+        from app.tabs import sanitize_tabs
+
+        return sanitize_tabs(tabs)
 
     def stats(self) -> dict[str, Any]:
         with self._connect() as conn:
