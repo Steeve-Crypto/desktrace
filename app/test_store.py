@@ -12,9 +12,13 @@ def test_insert_list_delete(tmp_path: Path) -> None:
         clipboard="hello",
         screenshot_path=None,
         placeholder=True,
+        tabs=[{"title": "Docs", "url": "https://example.com"}],
     )
     items = store.list(query="reboot")
     assert len(items) == 1
     assert items[0]["id"] == sid
+    assert items[0]["tabs"][0]["url"] == "https://example.com"
+    by_tab = store.list(query="example.com")
+    assert by_tab[0]["id"] == sid
     assert store.delete(sid) is True
     assert store.list() == []

@@ -37,10 +37,17 @@ class Store:
                     apps_json TEXT NOT NULL,
                     clipboard TEXT,
                     screenshot_path TEXT,
-                    placeholder INTEGER NOT NULL DEFAULT 0
+                    placeholder INTEGER NOT NULL DEFAULT 0,
+                    tabs_json TEXT
                 )
                 """
             )
+            cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(snapshots)").fetchall()
+            }
+            if "tabs_json" not in cols:
+                conn.execute("ALTER TABLE snapshots ADD COLUMN tabs_json TEXT")
 
     def insert(
         self,
@@ -51,14 +58,15 @@ class Store:
         clipboard: str | None,
         screenshot_path: str | None,
         placeholder: bool,
+        tabs: list[dict[str, Any]] | None = None,
     ) -> int:
         created = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             cur = conn.execute(
                 """
                 INSERT INTO snapshots
-                    (created_at, note, focused, apps_json, clipboard, screenshot_path, placeholder)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (created_at, note, focused, apps_json, clipboard, screenshot_path, placeholder, tabs_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     created,
@@ -68,6 +76,7 @@ class Store:
                     clipboard,
                     screenshot_path,
                     int(placeholder),
+                    json.dumps(tabs or []),
                 ),
             )
             return int(cur.lastrowid)
@@ -76,9 +85,9 @@ class Store:
         sql = "SELECT * FROM snapshots"
         params: list[Any] = []
         if query:
-            sql += " WHERE note LIKE ? OR focused LIKE ? OR apps_json LIKE ?"
+            sql += " WHERE note LIKE ? OR focused LIKE ? OR apps_json LIKE ? OR tabs_json LIKE ?"
             like = f"%{query}%"
-            params.extend([like, like, like])
+            params.extend([like, like, like, like])
         sql += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
         with self._connect() as conn:
@@ -105,6 +114,32 @@ class Store:
             conn.execute("DELETE FROM snapshots WHERE id = ?", (snapshot_id,))
         return True
 
+    def save_latest_tabs(self, payload: dict[str, Any]) -> None:
+        path = self.data_dir / "latest_tabs.json"
+        path.write_text(json.dumps(payload), encoding="utf-8")
+
+    def load_latest_tabs(self, max_age_seconds: int = 120) -> list[dict[str, Any]]:
+        path = self.data_dir / "latest_tabs.json"
+        if not path.exists():
+            return []
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return []
+        received = payload.get("received_at")
+        if received:
+            try:
+                ts = datetime.fromisoformat(received)
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                age = (datetime.now(timezone.utc) - ts).total_seconds()
+                if age > max_age_seconds:
+                    return []
+            except ValueError:
+                return []
+        tabs = payload.get("tabs")
+        return tabs if isinstance(tabs, list) else []
+
     def stats(self) -> dict[str, Any]:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM snapshots").fetchone()[0]
@@ -126,4 +161,5 @@ class Store:
             "clipboard": row["clipboard"],
             "screenshot_path": row["screenshot_path"],
             "placeholder": bool(row["placeholder"]),
+            "tabs": json.loads(row["tabs_json"] or "[]") if "tabs_json" in row.keys() else [],
         }
