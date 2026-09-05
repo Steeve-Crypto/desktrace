@@ -1,0 +1,36 @@
+[package]
+name = "desktrace"
+version = "0.2.1"
+description = "Local-first desktop time machine"
+authors = ["Steeve-Crypto"]
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = { version = "0.4", features = ["serde"] }
+sysinfo = "0.32"
+arboard = "3"
+screenshots = "0.8"
+image = "0.25"
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+url = "2"
+dirs = "5"
+thiserror = "1"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
