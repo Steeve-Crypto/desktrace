@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "DeskTrace Tabs",
+  "version": "0.2.0",
+  "description": "Opt-in: send open tab titles and URLs to DeskTrace on 127.0.0.1:8741 only. Never reads profile databases.",
+  "action": {
+    "default_title": "DeskTrace Tabs",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "permissions": ["tabs"],
+  "host_permissions": ["http://127.0.0.1:8741/*"],
+  "incognito": "not_allowed"
+}

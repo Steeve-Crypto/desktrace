@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>DeskTrace Tabs</title>
+  <style>
+    body { font: 13px/1.4 system-ui, sans-serif; margin: 0; width: 280px; background: #0c0d10; color: #ecece8; }
+    main { padding: 14px; }
+    h1 { font-size: 14px; margin: 0 0 6px; }
+    p { margin: 0 0 10px; color: #8b8d86; }
+    button { width: 100%; margin: 0 0 8px; padding: 8px; border: 0; font-weight: 700; cursor: pointer; background: #d6ff4b; color: #111; }
+    button.ghost { background: #15171c; color: #ecece8; border: 1px solid #2a2d33; }
+    #status { min-height: 36px; color: #8b8d86; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>DeskTrace Tabs</h1>
+    <p>Sends titles and URLs to 127.0.0.1:8741 only. Start DeskTrace first.</p>
+    <button id="push" type="button">Push open tabs</button>
+    <button id="capture" class="ghost" type="button">Capture snapshot now</button>
+    <p id="status">Idle.</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
