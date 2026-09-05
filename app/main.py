@@ -14,14 +14,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.capture import list_apps, read_clipboard, snapshot_files
 from app.store import Store
+from app.tabs import ALLOWED_SCHEMES, MAX_TABS, MAX_TITLE, MAX_URL, sanitize_tabs
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
-MAX_TABS = 80
 TAB_TTL_SECONDS = 120
 
 store = Store()
-app = FastAPI(title="DeskTrace", version="0.2.0")
+app = FastAPI(title="DeskTrace", version="0.2.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,8 +44,8 @@ class CallToolIn(BaseModel):
 
 
 class TabIn(BaseModel):
-    title: str = Field(default="", max_length=300)
-    url: str = Field(default="", max_length=2000)
+    title: str = Field(default="", max_length=MAX_TITLE)
+    url: str = Field(default="", max_length=MAX_URL)
     active: bool = False
     pinned: bool = False
     window_id: int | None = None
@@ -57,41 +57,15 @@ class TabIn(BaseModel):
         if not value:
             return ""
         parsed = urlparse(value)
-        if parsed.scheme in {"http", "https", "chrome", "edge", "about", "file"}:
+        if parsed.scheme in ALLOWED_SCHEMES and parsed.netloc:
             return value
-        raise ValueError("unsupported url scheme")
+        raise ValueError("only http(s) URLs with a host are accepted")
 
 
 class TabsIn(BaseModel):
     source: str = Field(default="desktrace-extension", max_length=64)
     browser: str | None = Field(default=None, max_length=32)
-    tabs: list[TabIn] = Field(default_factory=list)
-
-
-def _sanitize_tabs(raw: list[Any] | None) -> list[dict[str, Any]]:
-    cleaned: list[dict[str, Any]] = []
-    for item in raw or []:
-        if not isinstance(item, dict):
-            continue
-        url = str(item.get("url") or "").strip()
-        title = str(item.get("title") or "").strip()[:300]
-        if not url and not title:
-            continue
-        parsed = urlparse(url)
-        if url and parsed.scheme not in {"http", "https", "chrome", "edge", "about", "file"}:
-            continue
-        cleaned.append(
-            {
-                "title": title or url,
-                "url": url,
-                "active": bool(item.get("active")),
-                "pinned": bool(item.get("pinned")),
-                "window_id": item.get("window_id") or item.get("windowId"),
-            }
-        )
-        if len(cleaned) >= MAX_TABS:
-            break
-    return cleaned
+    tabs: list[TabIn] = Field(default_factory=list, max_length=MAX_TABS)
 
 
 def do_capture(
@@ -102,7 +76,7 @@ def do_capture(
     apps, focused = list_apps()
     clip = read_clipboard() if include_clipboard else None
     shot_path, real = snapshot_files(store.shots_dir)
-    attached = _sanitize_tabs(tabs) if tabs else store.load_latest_tabs(TAB_TTL_SECONDS)
+    attached = sanitize_tabs(tabs) if tabs else store.load_latest_tabs(TAB_TTL_SECONDS)
     snap_id = store.insert(
         note=note,
         focused=focused,
@@ -170,7 +144,7 @@ def get_tabs() -> dict[str, Any]:
 
 @app.post("/api/tabs")
 def put_tabs(body: TabsIn) -> dict[str, Any]:
-    tabs = _sanitize_tabs([t.model_dump() for t in body.tabs])
+    tabs = sanitize_tabs([t.model_dump() for t in body.tabs])
     payload = {
         "source": body.source,
         "browser": body.browser,
@@ -179,6 +153,12 @@ def put_tabs(body: TabsIn) -> dict[str, Any]:
     }
     store.save_latest_tabs(payload)
     return {"ok": True, "stored": len(tabs), "ttl_seconds": TAB_TTL_SECONDS}
+
+
+@app.delete("/api/tabs")
+def clear_tabs() -> dict[str, Any]:
+    store.clear_latest_tabs()
+    return {"ok": True, "stored": 0}
 
 
 @app.get("/api/snapshots")
