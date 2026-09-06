@@ -4,6 +4,9 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
+const TRAY_ID: &str = "desktrace";
+const DEFAULT_TIP: &str = "DeskTrace — Ctrl+Shift+S to capture";
+
 fn data_dir() -> std::path::PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -16,8 +19,15 @@ pub fn capture_now(note: Option<&str>) -> Result<i64, String> {
     Ok(snap.id)
 }
 
+pub fn mark_saved(app: &AppHandle, id: i64) {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(format!("DeskTrace — saved #{id}")));
+    }
+}
+
 pub fn show_timeline(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_skip_taskbar(false);
         let _ = win.show();
         let _ = win.unminimize();
         let _ = win.set_focus();
@@ -27,6 +37,7 @@ pub fn show_timeline(app: &AppHandle) {
 pub fn hide_to_tray(app: &AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.hide();
+        let _ = win.set_skip_taskbar(true);
     }
 }
 
@@ -37,23 +48,13 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     let quit = MenuItem::with_id(app, "quit", "Quit DeskTrace", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&capture, &show, &hide, &quit])?;
 
-    let icon = app
-        .default_window_icon()
-        .cloned()
-        .expect("bundle icon missing");
-
-    TrayIconBuilder::with_id("desktrace")
-        .tooltip("DeskTrace — Ctrl+Shift+S to capture")
-        .icon(icon)
+    let mut builder = TrayIconBuilder::with_id(TRAY_ID)
+        .tooltip(DEFAULT_TIP)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
             "capture" => match capture_now(Some("tray")) {
-                Ok(id) => {
-                    if let Some(tray) = app.tray_by_id("desktrace") {
-                        let _ = tray.set_tooltip(Some(format!("DeskTrace — saved #{id}")));
-                    }
-                }
+                Ok(id) => mark_saved(app, id),
                 Err(err) => eprintln!("tray capture failed: {err}"),
             },
             "show" => show_timeline(app),
@@ -62,29 +63,28 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
-            if let TrayIconEvent::DoubleClick {
-                button: MouseButton::Left,
-                ..
-            } = event
-            {
-                show_timeline(tray.app_handle());
-            }
             if let TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } = event
             {
-                if let Some(win) = tray.app_handle().get_webview_window("main") {
+                let app = tray.app_handle();
+                if let Some(win) = app.get_webview_window("main") {
                     if win.is_visible().unwrap_or(false) {
-                        let _ = win.hide();
+                        hide_to_tray(app);
                     } else {
-                        show_timeline(tray.app_handle());
+                        show_timeline(app);
                     }
                 }
             }
-        })
-        .build(app)?;
+        });
+
+    if let Some(icon) = app.default_window_icon().cloned() {
+        builder = builder.icon(icon);
+    }
+
+    builder.build(app)?;
 
     if let Some(win) = app.get_webview_window("main") {
         let handle = app.clone();
@@ -97,4 +97,48 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(desktop)]
+pub fn register_hotkeys(app: &AppHandle) -> Result<String, String> {
+    use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+
+    let combos = ["ctrl+shift+s", "ctrl+alt+s", "ctrl+shift+d"];
+    let mut last_err = String::from("no combo worked");
+    for combo in combos {
+        let built = tauri_plugin_global_shortcut::Builder::new()
+            .with_shortcuts([combo])
+            .and_then(|b| {
+                Ok(b.with_handler(|app, shortcut, event| {
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    let hit = shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
+                        || shortcut.matches(Modifiers::CONTROL | Modifiers::ALT, Code::KeyS)
+                        || shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyD);
+                    if !hit {
+                        return;
+                    }
+                    match capture_now(Some("hotkey")) {
+                        Ok(id) => mark_saved(app, id),
+                        Err(err) => eprintln!("hotkey capture failed: {err}"),
+                    }
+                })
+                .build())
+            });
+        match built {
+            Ok(plugin) => {
+                if let Err(err) = app.plugin(plugin) {
+                    last_err = format!("{combo}: {err}");
+                    continue;
+                }
+                if let Some(tray) = app.tray_by_id(TRAY_ID) {
+                    let _ = tray.set_tooltip(Some(format!("DeskTrace — {combo} to capture")));
+                }
+                return Ok(combo.to_string());
+            }
+            Err(err) => last_err = format!("{combo}: {err}"),
+        }
+    }
+    Err(last_err)
 }
