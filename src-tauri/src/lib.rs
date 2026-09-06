@@ -54,35 +54,13 @@ pub fn run() {
         ])
         .setup(|app| {
             tray::install(app.handle())?;
-
             #[cfg(desktop)]
             {
-                use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
-                app.handle().plugin(
-                    tauri_plugin_global_shortcut::Builder::new()
-                        .with_shortcuts(["ctrl+shift+s"])?
-                        .with_handler(|app, shortcut, event| {
-                            if event.state != ShortcutState::Pressed {
-                                return;
-                            }
-                            if shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
-                            {
-                                match tray::capture_now(Some("hotkey")) {
-                                    Ok(id) => {
-                                        if let Some(tray) = app.tray_by_id("desktrace") {
-                                            let _ = tray.set_tooltip(Some(format!(
-                                                "DeskTrace — saved #{id}"
-                                            )));
-                                        }
-                                    }
-                                    Err(err) => eprintln!("hotkey capture failed: {err}"),
-                                }
-                            }
-                        })
-                        .build(),
-                )?;
+                match tray::register_hotkeys(app.handle()) {
+                    Ok(combo) => eprintln!("DeskTrace hotkey: {combo}"),
+                    Err(err) => eprintln!("DeskTrace hotkey skipped: {err}"),
+                }
             }
-
             Ok(())
         })
         .run(tauri::generate_context!())
