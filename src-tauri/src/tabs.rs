@@ -6,7 +6,7 @@ pub const MAX_TABS: usize = 80;
 pub const MAX_TITLE: usize = 200;
 pub const MAX_URL: usize = 2048;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 pub struct Tab {
     #[serde(default)]
     pub title: String,
@@ -54,4 +54,40 @@ pub fn sanitize_tabs(raw: &[Tab]) -> Vec<Tab> {
         });
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tab(url: &str) -> Tab {
+        Tab {
+            title: "t".into(),
+            url: url.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn drops_file_and_chrome_schemes() {
+        let raw = [
+            tab("https://example.com/a"),
+            tab("http://localhost:3000"),
+            tab("file:///tmp/secret"),
+            tab("chrome://settings"),
+            tab("https://example.com/a"),
+        ];
+        let out = sanitize_tabs(&raw);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].url, "https://example.com/a");
+        assert_eq!(out[1].url, "http://localhost:3000");
+    }
+
+    #[test]
+    fn caps_at_max_tabs() {
+        let raw: Vec<Tab> = (0..200)
+            .map(|i| tab(&format!("https://ex.com/{i}")))
+            .collect();
+        assert_eq!(sanitize_tabs(&raw).len(), MAX_TABS);
+    }
 }

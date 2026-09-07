@@ -1,11 +1,12 @@
 use crate::server;
+use crate::status;
 use crate::store::Store;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager};
 
-const TRAY_ID: &str = "desktrace";
-const DEFAULT_TIP: &str = "DeskTrace — Ctrl+Shift+S to capture";
+pub const TRAY_ID: &str = "desktrace";
+const DEFAULT_TIP: &str = "DeskTrace — waiting for hotkey";
 
 fn data_dir() -> std::path::PathBuf {
     dirs::home_dir()
@@ -16,12 +17,26 @@ fn data_dir() -> std::path::PathBuf {
 pub fn capture_now(note: Option<&str>) -> Result<i64, String> {
     let store = Store::open(data_dir()).map_err(|e| e.to_string())?;
     let snap = server::do_capture(&store, note, true, None)?;
+    if snap.placeholder {
+        return Err(snap
+            .shot_error
+            .unwrap_or_else(|| "screenshot failed".into()));
+    }
     Ok(snap.id)
 }
 
 pub fn mark_saved(app: &AppHandle, id: i64) {
+    status::set_ok(id);
     if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        let _ = tray.set_tooltip(Some(format!("DeskTrace — saved #{id}")));
+        let combo = status::get().hotkey.unwrap_or_else(|| "no hotkey".into());
+        let _ = tray.set_tooltip(Some(format!("DeskTrace — saved #{id} · {combo}")));
+    }
+}
+
+pub fn mark_error(app: &AppHandle, err: &str) {
+    status::set_error(err);
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        let _ = tray.set_tooltip(Some(format!("DeskTrace — capture failed: {err}")));
     }
 }
 
@@ -41,13 +56,44 @@ pub fn hide_to_tray(app: &AppHandle) {
     }
 }
 
-pub fn install(app: &AppHandle) -> tauri::Result<()> {
-    let capture = MenuItem::with_id(app, "capture", "Capture now", true, Some("Ctrl+Shift+S"))?;
+fn accel_label(combo: &str) -> String {
+    combo
+        .split('+')
+        .map(|part| match part {
+            "ctrl" => "Ctrl".to_string(),
+            "alt" => "Alt".to_string(),
+            "shift" => "Shift".to_string(),
+            other => other.to_uppercase(),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
+fn menu_for(app: &AppHandle, combo: Option<&str>) -> tauri::Result<Menu<tauri::Wry>> {
+    let accel = combo.map(accel_label);
+    let capture = MenuItem::with_id(app, "capture", "Capture now", true, accel.as_deref())?;
     let show = MenuItem::with_id(app, "show", "Open timeline", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Hide window", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit DeskTrace", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&capture, &show, &hide, &quit])?;
+    Menu::with_items(app, &[&capture, &show, &hide, &quit])
+}
 
+pub fn apply_hotkey_ui(app: &AppHandle, combo: Option<&str>) {
+    status::set_hotkey(combo.map(|s| s.to_string()));
+    if let Ok(menu) = menu_for(app, combo) {
+        if let Some(tray) = app.tray_by_id(TRAY_ID) {
+            let _ = tray.set_menu(Some(&menu));
+            let tip = match combo {
+                Some(c) => format!("DeskTrace — {c} to capture"),
+                None => "DeskTrace — no hotkey available".into(),
+            };
+            let _ = tray.set_tooltip(Some(tip));
+        }
+    }
+}
+
+pub fn install(app: &AppHandle) -> tauri::Result<()> {
+    let menu = menu_for(app, None)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip(DEFAULT_TIP)
         .menu(&menu)
@@ -55,7 +101,7 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "capture" => match capture_now(Some("tray")) {
                 Ok(id) => mark_saved(app, id),
-                Err(err) => eprintln!("tray capture failed: {err}"),
+                Err(err) => mark_error(app, &err),
             },
             "show" => show_timeline(app),
             "hide" => hide_to_tray(app),
@@ -101,44 +147,51 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
 
 #[cfg(desktop)]
 pub fn register_hotkeys(app: &AppHandle) -> Result<String, String> {
-    use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
+    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, ShortcutState};
+
+    app.plugin(
+        tauri_plugin_global_shortcut::Builder::new()
+            .with_handler(|app, shortcut, event| {
+                if event.state != ShortcutState::Pressed {
+                    return;
+                }
+                let hit = shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
+                    || shortcut.matches(Modifiers::CONTROL | Modifiers::ALT, Code::KeyS)
+                    || shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyD);
+                if !hit {
+                    return;
+                }
+                match capture_now(Some("hotkey")) {
+                    Ok(id) => mark_saved(app, id),
+                    Err(err) => mark_error(app, &err),
+                }
+            })
+            .build(),
+    )
+    .map_err(|e| e.to_string())?;
 
     let combos = ["ctrl+shift+s", "ctrl+alt+s", "ctrl+shift+d"];
     let mut last_err = String::from("no combo worked");
     for combo in combos {
-        let built = tauri_plugin_global_shortcut::Builder::new()
-            .with_shortcuts([combo])
-            .and_then(|b| {
-                Ok(b.with_handler(|app, shortcut, event| {
-                    if event.state != ShortcutState::Pressed {
-                        return;
-                    }
-                    let hit = shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyS)
-                        || shortcut.matches(Modifiers::CONTROL | Modifiers::ALT, Code::KeyS)
-                        || shortcut.matches(Modifiers::CONTROL | Modifiers::SHIFT, Code::KeyD);
-                    if !hit {
-                        return;
-                    }
-                    match capture_now(Some("hotkey")) {
-                        Ok(id) => mark_saved(app, id),
-                        Err(err) => eprintln!("hotkey capture failed: {err}"),
-                    }
-                })
-                .build())
-            });
-        match built {
-            Ok(plugin) => {
-                if let Err(err) = app.plugin(plugin) {
-                    last_err = format!("{combo}: {err}");
-                    continue;
-                }
-                if let Some(tray) = app.tray_by_id(TRAY_ID) {
-                    let _ = tray.set_tooltip(Some(format!("DeskTrace — {combo} to capture")));
-                }
+        match app.global_shortcut().register(combo) {
+            Ok(()) => {
+                apply_hotkey_ui(app, Some(combo));
                 return Ok(combo.to_string());
             }
             Err(err) => last_err = format!("{combo}: {err}"),
         }
     }
+    apply_hotkey_ui(app, None);
+    status::set_error(format!("hotkey unavailable ({last_err})"));
     Err(last_err)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::accel_label;
+
+    #[test]
+    fn accel_pretty() {
+        assert_eq!(accel_label("ctrl+alt+s"), "Ctrl+Alt+S");
+    }
 }

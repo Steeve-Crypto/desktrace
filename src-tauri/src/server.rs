@@ -1,6 +1,7 @@
 use crate::capture;
 use crate::restore;
-use crate::store::{Snapshot, Store};
+use crate::status;
+use crate::store::{NewSnapshot, Snapshot, Store};
 use crate::tabs::{sanitize_tabs, Tab, MAX_TABS};
 use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -46,23 +47,45 @@ pub fn do_capture(
     let clip = if include_clipboard {
         capture::read_clipboard()
     } else {
-        None
+        capture::ClipResult {
+            text: None,
+            error: None,
+        }
     };
-    let (shot, real) = capture::take_screenshot(&store.shots_dir);
+    let shot = capture::take_screenshot(&store.shots_dir);
     let attached = if let Some(tabs) = tabs {
         sanitize_tabs(&tabs)
     } else {
         store.load_latest_tabs()
     };
-    let id = store.insert(
+    if let Some(err) = shot.error.as_deref() {
+        status::set_error(err);
+    }
+    if let Some(err) = clip.error.as_deref() {
+        status::set_error(err);
+    }
+    let shot_path = shot.path.to_string_lossy().to_string();
+    let id = store.insert(NewSnapshot {
         note,
-        focused.as_deref(),
-        &apps,
-        clip.as_deref(),
-        Some(shot.to_string_lossy().as_ref()),
-        !real,
-        &attached,
-    )?;
+        focused: focused.as_deref(),
+        apps: &apps,
+        clipboard: clip.text.as_deref(),
+        clipboard_error: clip.error.as_deref(),
+        screenshot_path: Some(&shot_path),
+        placeholder: shot.placeholder,
+        shot_error: shot.error.as_deref(),
+        monitors: shot.monitors,
+        tabs: &attached,
+    })?;
+    if shot.placeholder {
+        status::set_error(
+            shot.error
+                .clone()
+                .unwrap_or_else(|| "screenshot failed".into()),
+        );
+    } else if clip.error.is_none() {
+        status::set_ok(id);
+    }
     store.get(id)?.ok_or_else(|| "insert vanished".into())
 }
 
@@ -154,7 +177,9 @@ async fn put_tabs(State(st): State<AppState>, Json(body): Json<TabsIn>) -> Json<
         "tabs": tabs,
     });
     let _ = st.store.save_latest_tabs(&payload);
-    Json(json!({ "ok": true, "stored": payload["tabs"].as_array().map(|a| a.len()).unwrap_or(0), "ttl_seconds": 120 }))
+    Json(
+        json!({ "ok": true, "stored": payload["tabs"].as_array().map(|a| a.len()).unwrap_or(0), "ttl_seconds": 120 }),
+    )
 }
 
 async fn clear_tabs(State(st): State<AppState>) -> Json<Value> {
@@ -182,12 +207,7 @@ async fn shot(State(st): State<AppState>, Path(id): Path<i64>) -> Response {
         return (StatusCode::NOT_FOUND, "no screenshot").into_response();
     };
     match std::fs::read(&path) {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [("content-type", "image/jpeg")],
-            bytes,
-        )
-            .into_response(),
+        Ok(bytes) => (StatusCode::OK, [("content-type", "image/jpeg")], bytes).into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "file missing").into_response(),
     }
 }

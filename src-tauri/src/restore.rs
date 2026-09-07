@@ -21,7 +21,9 @@ pub struct RestoreReport {
 }
 
 pub fn plan(store: &Store, id: i64) -> Result<serde_json::Value, String> {
-    let snap = store.get(id)?.ok_or_else(|| "snapshot not found".to_string())?;
+    let snap = store
+        .get(id)?
+        .ok_or_else(|| "snapshot not found".to_string())?;
     Ok(serde_json::json!({
         "snapshot_id": id,
         "focused": snap.focused,
@@ -32,7 +34,9 @@ pub fn plan(store: &Store, id: i64) -> Result<serde_json::Value, String> {
 }
 
 pub fn execute(store: &Store, id: i64) -> Result<RestoreReport, String> {
-    let snap = store.get(id)?.ok_or_else(|| "snapshot not found".to_string())?;
+    let snap = store
+        .get(id)?
+        .ok_or_else(|| "snapshot not found".to_string())?;
     let mut launched = Vec::new();
 
     for cmd in exe_targets(&snap) {
@@ -49,8 +53,9 @@ pub fn execute(store: &Store, id: i64) -> Result<RestoreReport, String> {
     Ok(RestoreReport {
         snapshot_id: id,
         launched,
-        note: "Best-effort restore. Existing windows are not reused. Unsaved docs are not recovered."
-            .into(),
+        note:
+            "Best-effort restore. Existing windows are not reused. Unsaved docs are not recovered."
+                .into(),
     })
 }
 
@@ -67,10 +72,10 @@ fn exe_targets(snap: &Snapshot) -> Vec<serde_json::Value> {
         if !Path::new(exe).exists() {
             continue;
         }
-        let lower = exe.to_lowercase();
-        if lower.contains("\\windows\\") || lower.contains("/windows/") {
+        if is_blocked_exe(exe) {
             continue;
         }
+        let lower = exe.to_lowercase();
         if !seen.insert(lower) {
             continue;
         }
@@ -174,5 +179,30 @@ fn open_browser(url: &str) -> Result<(), String> {
             .spawn()
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+}
+
+pub fn is_blocked_exe(exe: &str) -> bool {
+    let lower = exe.to_lowercase().replace('/', "\\");
+    lower.contains("\\windows\\") || lower.contains("\\system32\\")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocks_system_paths() {
+        assert!(is_blocked_exe(r"C:\\Windows\\System32\\notepad.exe"));
+        assert!(is_blocked_exe("/Windows/System32/cmd.exe"));
+        assert!(!is_blocked_exe(
+            r"C:\\Users\\a\\AppData\\Local\\Programs\\cursor.exe"
+        ));
+    }
+
+    #[test]
+    fn rejects_non_http_open() {
+        let act = open_url("file:///tmp/x", None);
+        assert!(!act.ok);
     }
 }

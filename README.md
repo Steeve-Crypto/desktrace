@@ -48,10 +48,23 @@ Timeline detail → Restore now.
 
 On first Windows launch the app writes `%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DeskTrace.bat`.
 
-## Tray + hotkey (issue #1, blocked on laptop verify)
+## Tray + hotkey
 
-- Close hides to tray
-- Ctrl+Shift+S captures without opening the window
+One tray icon, built in Rust. Config does not declare a second tray.
+
+- Close hides to tray and drops the taskbar / Alt+Tab entry
+- Left-click toggles the timeline
+- Hotkey tries `ctrl+shift+s`, then `ctrl+alt+s`, then `ctrl+shift+d`
+- Menu accelerator and tooltip show the combo that actually registered
+- Capture or hotkey failure is written to the tray tooltip and the timeline banner — never a silent 16×16 “success”
+
+Timeline UI talks to `http://127.0.0.1:8741` explicitly.
+
+## CI
+
+`.github/workflows/ci.yml` runs `cargo fmt`, `clippy -D warnings`, and `cargo test --all-targets` on Ubuntu and Windows.
+
+Windows installer still needs `cargo tauri build` on the laptop after those jobs are green.
 
 ## Privacy
 

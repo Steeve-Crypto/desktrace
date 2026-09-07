@@ -2,6 +2,7 @@ mod autostart;
 mod capture;
 mod restore;
 mod server;
+mod status;
 mod store;
 mod tabs;
 mod tray;
@@ -15,7 +16,10 @@ fn data_dir() -> std::path::PathBuf {
 }
 
 #[tauri::command]
-fn capture_snapshot(note: Option<String>, include_clipboard: Option<bool>) -> Result<serde_json::Value, String> {
+fn capture_snapshot(
+    note: Option<String>,
+    include_clipboard: Option<bool>,
+) -> Result<serde_json::Value, String> {
     let store = Store::open(data_dir()).map_err(|e| e.to_string())?;
     let snap = server::do_capture(
         &store,
@@ -74,9 +78,9 @@ pub fn run() {
             tray::install(app.handle())?;
             #[cfg(desktop)]
             {
-                match tray::register_hotkeys(app.handle()) {
-                    Ok(combo) => eprintln!("DeskTrace hotkey: {combo}"),
-                    Err(err) => eprintln!("DeskTrace hotkey skipped: {err}"),
+                if let Err(err) = tray::register_hotkeys(app.handle()) {
+                    crate::status::set_error(format!("hotkey unavailable: {err}"));
+                    tray::apply_hotkey_ui(app.handle(), None);
                 }
             }
             Ok(())

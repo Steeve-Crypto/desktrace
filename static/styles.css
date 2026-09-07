@@ -62,3 +62,6 @@ button.danger { background: transparent; color: var(--danger); border: 1px solid
 .detail-actions { display: flex; gap: 8px; margin: 16px 0; }
 .plan { white-space: pre-wrap; color: var(--muted); font-size: 12px; }
 .empty { color: var(--muted); padding: 40px 8px; }
+
+.banner, .err { color: #ffb4b4; background: #2a1212; padding: 8px 12px; border-radius: 6px; }
+.banner[hidden], .err[hidden] { display: none; }

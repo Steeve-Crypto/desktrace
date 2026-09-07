@@ -22,7 +22,17 @@ async function loadStats() {
   const s = await j("/api/stats");
   const mb = (s.shots_bytes / (1024 * 1024)).toFixed(2);
   const tabs = s.tabs_fresh ? `${s.tab_count} tabs cached` : "no fresh tabs";
-  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${tabs} · ${s.data_dir}`;
+  const hk = s.hotkey ? s.hotkey : "no hotkey";
+  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${tabs} · ${hk} · ${s.data_dir}`;
+  const banner = document.getElementById("error-banner");
+  if (banner) {
+    if (s.last_error) {
+      banner.textContent = s.last_error;
+      banner.hidden = false;
+    } else {
+      banner.hidden = true;
+    }
+  }
 }
 
 async function loadList() {
@@ -41,7 +51,7 @@ async function loadList() {
       <img src="${API}/api/snapshots/${item.id}/shot" alt="" />
       <div class="body">
         <h3>${item.note || item.focused || "Snapshot #" + item.id}</h3>
-        <p>${fmt(item.created_at)} · ${item.apps.length} apps · ${(item.tabs || []).length} tabs${item.placeholder ? " · placeholder frame" : ""}</p>
+        <p>${fmt(item.created_at)} · ${item.apps.length} apps · ${(item.tabs || []).length} tabs${item.placeholder ? " · SCREENSHOT FAILED" : ""}${item.shot_error ? " · " + item.shot_error : ""}</p>
       </div>`;
     card.onclick = () => openDetail(item.id);
     timeline.appendChild(card);
@@ -56,7 +66,15 @@ async function openDetail(id) {
   document.getElementById("detail-title").textContent = item.note || `Snapshot #${item.id}`;
   document.getElementById("detail-time").textContent = fmt(item.created_at);
   document.getElementById("detail-note").textContent = item.note || "";
-  document.getElementById("detail-focus").textContent = item.focused ? `Focused-ish: ${item.focused}` : "";
+  document.getElementById("detail-focus").textContent = item.focused
+    ? `Foreground: ${item.focused}${item.monitors ? " · " + item.monitors + " monitor(s)" : ""}`
+    : "";
+  const err = [item.shot_error, item.clipboard_error].filter(Boolean).join(" · ");
+  const errEl = document.getElementById("detail-error");
+  if (errEl) {
+    errEl.textContent = err;
+    errEl.hidden = !err;
+  }
   document.getElementById("app-list").innerHTML = item.apps
     .map((a) => `<li>${a.name}</li>`)
     .join("");
