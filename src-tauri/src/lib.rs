@@ -1,4 +1,6 @@
+mod autostart;
 mod capture;
+mod restore;
 mod server;
 mod store;
 mod tabs;
@@ -37,6 +39,19 @@ fn get_stats() -> Result<serde_json::Value, String> {
     Ok(store.stats())
 }
 
+#[tauri::command]
+fn restore_snapshot(id: i64) -> Result<serde_json::Value, String> {
+    let store = Store::open(data_dir()).map_err(|e| e.to_string())?;
+    let report = restore::execute(&store, id)?;
+    serde_json::to_value(report).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn restore_plan(id: i64) -> Result<serde_json::Value, String> {
+    let store = Store::open(data_dir()).map_err(|e| e.to_string())?;
+    restore::plan(&store, id)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let store = Store::open(data_dir()).expect("open ~/.desktrace");
@@ -44,13 +59,16 @@ pub fn run() {
         let rt = tokio::runtime::Runtime::new().expect("tokio");
         rt.block_on(server::serve(store));
     });
+    autostart::enable_windows_startup();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             capture_snapshot,
             list_snapshots,
-            get_stats
+            get_stats,
+            restore_snapshot,
+            restore_plan
         ])
         .setup(|app| {
             tray::install(app.handle())?;
