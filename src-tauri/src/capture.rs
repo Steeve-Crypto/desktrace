@@ -35,7 +35,7 @@ pub fn list_apps() -> (Vec<AppRow>, Option<String>) {
     let mut sys = sysinfo::System::new();
     sys.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     let fg = foreground_pid();
-    let mut apps = Vec::new();
+    let mut unique: std::collections::BTreeMap<String, AppRow> = std::collections::BTreeMap::new();
     let mut focused = None;
     for (pid, proc) in sys.processes() {
         let name = proc.name().to_string_lossy().to_string();
@@ -47,20 +47,24 @@ pub fn list_apps() -> (Vec<AppRow>, Option<String>) {
         if fg == Some(pid_u) {
             focused = Some(name.clone());
         }
-        apps.push(AppRow {
+        let key = exe
+            .as_deref()
+            .map(|e| e.to_lowercase())
+            .unwrap_or_else(|| name.to_lowercase());
+        unique.entry(key).or_insert(AppRow {
             name,
             exe,
             pid: pid_u,
         });
-        if apps.len() >= 80 {
-            break;
-        }
     }
     if focused.is_none() {
         if let Some(pid) = fg {
             focused = Some(format!("pid:{pid}"));
         }
     }
+    let mut apps: Vec<AppRow> = unique.into_values().collect();
+    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps.truncate(80);
     (apps, focused)
 }
 
@@ -75,6 +79,8 @@ pub fn is_noise(name: &str) -> bool {
             | "svchost.exe"
             | "wininit.exe"
             | "services.exe"
+            | "desktrace.exe"
+            | "desktrace"
     )
 }
 

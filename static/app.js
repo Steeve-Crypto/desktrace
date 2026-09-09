@@ -2,7 +2,17 @@ const timeline = document.getElementById("timeline");
 const statsEl = document.getElementById("stats");
 const detail = document.getElementById("detail");
 let currentId = null;
+let currentClip = "";
 const API = "http://127.0.0.1:8741";
+
+function esc(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 async function j(url, opts) {
   const res = await fetch(url.startsWith("http") ? url : API + url, opts);
@@ -23,7 +33,7 @@ async function loadStats() {
   const mb = (s.shots_bytes / (1024 * 1024)).toFixed(2);
   const tabs = s.tabs_fresh ? `${s.tab_count} tabs cached` : "no fresh tabs";
   const hk = s.hotkey ? s.hotkey : "no hotkey";
-  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${tabs} · ${hk} · ${s.data_dir}`;
+  statsEl.textContent = `${s.count} snapshots · ${mb} MB shots · ${tabs} · ${hk}`;
   const banner = document.getElementById("error-banner");
   if (banner) {
     if (s.last_error) {
@@ -41,17 +51,20 @@ async function loadList() {
   const data = await j(url);
   timeline.innerHTML = "";
   if (!data.items.length) {
-    timeline.innerHTML = `<p class="empty">No snapshots yet. Hit Capture now.</p>`;
+    timeline.innerHTML = `<p class="empty">No snapshots yet. Hit Capture now or the tray hotkey.</p>`;
     return;
   }
   for (const item of data.items) {
     const card = document.createElement("article");
-    card.className = "card";
+    card.className = item.placeholder ? "card fail" : "card";
+    const title = esc(item.note || item.focused || "Snapshot #" + item.id);
+    const fail = item.placeholder ? " · SCREENSHOT FAILED" : "";
+    const err = item.shot_error ? ` · ${esc(item.shot_error)}` : "";
     card.innerHTML = `
       <img src="${API}/api/snapshots/${item.id}/shot" alt="" />
       <div class="body">
-        <h3>${item.note || item.focused || "Snapshot #" + item.id}</h3>
-        <p>${fmt(item.created_at)} · ${item.apps.length} apps · ${(item.tabs || []).length} tabs${item.placeholder ? " · SCREENSHOT FAILED" : ""}${item.shot_error ? " · " + item.shot_error : ""}</p>
+        <h3>${title}</h3>
+        <p>${esc(fmt(item.created_at))} · ${item.apps.length} apps · ${(item.tabs || []).length} tabs${fail}${err}</p>
       </div>`;
     card.onclick = () => openDetail(item.id);
     timeline.appendChild(card);
@@ -76,12 +89,22 @@ async function openDetail(id) {
     errEl.hidden = !err;
   }
   document.getElementById("app-list").innerHTML = item.apps
-    .map((a) => `<li>${a.name}</li>`)
+    .map((a) => `<li>${esc(a.name)}${a.exe ? `<span class="url">${esc(a.exe)}</span>` : ""}</li>`)
     .join("");
   const tabs = item.tabs || [];
   document.getElementById("tab-list").innerHTML = tabs.length
-    ? tabs.map((t) => `<li>${t.active ? "● " : ""}${t.title || t.url}<br /><span class="url">${t.url || ""}</span></li>`).join("")
+    ? tabs
+        .map(
+          (t) =>
+            `<li>${t.active ? "● " : ""}${esc(t.title || t.url)}<br /><span class="url">${esc(t.url || "")}</span></li>`
+        )
+        .join("")
     : "<li>No tabs. Load the extension and push first.</li>";
+  currentClip = item.clipboard || "";
+  const clipEl = document.getElementById("clip-preview");
+  if (clipEl) {
+    clipEl.textContent = currentClip ? currentClip.slice(0, 400) : "No clipboard text in this snapshot.";
+  }
   document.getElementById("plan-out").textContent = "";
 }
 
@@ -89,14 +112,25 @@ document.getElementById("close").onclick = () => detail.classList.add("hidden");
 
 document.getElementById("capture").onclick = async () => {
   const note = document.getElementById("note").value.trim();
-  await j("/api/snapshots", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ note: note || null, include_clipboard: true }),
-  });
-  document.getElementById("note").value = "";
-  await loadStats();
-  await loadList();
+  try {
+    const row = await j("/api/snapshots", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ note: note || null, include_clipboard: true }),
+    });
+    document.getElementById("note").value = "";
+    await loadStats();
+    await loadList();
+    if (row.placeholder) {
+      const banner = document.getElementById("error-banner");
+      banner.textContent = row.shot_error || "Screenshot failed";
+      banner.hidden = false;
+    }
+  } catch (e) {
+    const banner = document.getElementById("error-banner");
+    banner.textContent = e.message;
+    banner.hidden = false;
+  }
 };
 
 document.getElementById("search").addEventListener("input", () => {
@@ -125,6 +159,20 @@ document.getElementById("restore").onclick = async () => {
   const report = await j(`/api/snapshots/${currentId}/restore`, { method: "POST" });
   document.getElementById("plan-out").textContent = JSON.stringify(report, null, 2);
 };
+
+const copyBtn = document.getElementById("copy-clip");
+if (copyBtn) {
+  copyBtn.onclick = async () => {
+    if (!currentClip) return;
+    try {
+      await navigator.clipboard.writeText(currentClip);
+      copyBtn.textContent = "Copied";
+      setTimeout(() => (copyBtn.textContent = "Copy clipboard"), 1200);
+    } catch (e) {
+      document.getElementById("plan-out").textContent = e.message;
+    }
+  };
+}
 
 loadStats().catch((e) => (statsEl.textContent = e.message));
 loadList().catch((e) => (timeline.textContent = e.message));

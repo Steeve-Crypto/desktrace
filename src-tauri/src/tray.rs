@@ -74,15 +74,21 @@ fn menu_for(app: &AppHandle, combo: Option<&str>) -> tauri::Result<Menu<tauri::W
     let capture = MenuItem::with_id(app, "capture", "Capture now", true, accel.as_deref())?;
     let show = MenuItem::with_id(app, "show", "Open timeline", true, None::<&str>)?;
     let hide = MenuItem::with_id(app, "hide", "Hide window", true, None::<&str>)?;
+    let auto_label = if crate::autostart::is_enabled() {
+        "Don't start with Windows"
+    } else {
+        "Start with Windows"
+    };
+    let auto = MenuItem::with_id(app, "autostart", auto_label, true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit DeskTrace", true, None::<&str>)?;
-    Menu::with_items(app, &[&capture, &show, &hide, &quit])
+    Menu::with_items(app, &[&capture, &show, &hide, &auto, &quit])
 }
 
 pub fn apply_hotkey_ui(app: &AppHandle, combo: Option<&str>) {
     status::set_hotkey(combo.map(|s| s.to_string()));
     if let Ok(menu) = menu_for(app, combo) {
         if let Some(tray) = app.tray_by_id(TRAY_ID) {
-            let _ = tray.set_menu(Some(&menu));
+            let _ = tray.set_menu(Some(menu));
             let tip = match combo {
                 Some(c) => format!("DeskTrace — {c} to capture"),
                 None => "DeskTrace — no hotkey available".into(),
@@ -105,6 +111,10 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
             },
             "show" => show_timeline(app),
             "hide" => hide_to_tray(app),
+            "autostart" => {
+                crate::autostart::toggle();
+                apply_hotkey_ui(app, status::get().hotkey.as_deref());
+            }
             "quit" => app.exit(0),
             _ => {}
         })

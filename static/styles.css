@@ -65,3 +65,9 @@ button.danger { background: transparent; color: var(--danger); border: 1px solid
 
 .banner, .err { color: #ffb4b4; background: #2a1212; padding: 8px 12px; border-radius: 6px; }
 .banner[hidden], .err[hidden] { display: none; }
+
+.card.fail { border-color: #7a2a2a; }
+.card.fail h3 { color: #ffb4b4; }
+.url { display: block; font-size: 11px; color: #6d7168; word-break: break-all; }
+#copy-clip { background: var(--panel); color: var(--ink); border: 1px solid var(--line); margin-bottom: 12px; }
+#error-banner { margin: 0 28px; }

@@ -8,7 +8,7 @@ Local-first desktop time machine.
 
 **Stack: Tauri 2 + Rust.** Capture apps, screenshot, clipboard, and opt-in browser tabs. Restore later. Nothing leaves the machine.
 
-Python under `app/` is leftover prototype. The running product is `src-tauri/`.
+Python leftover is gone. Product is `src-tauri/` only.
 
 Repo: https://github.com/Steeve-Crypto/desktrace
 
@@ -46,7 +46,7 @@ Timeline detail → Restore now.
 
 ## Autostart
 
-On first Windows launch the app writes `%APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\DeskTrace.bat`.
+On first Windows launch the app writes a Startup `.bat` and `HKCU\...\Run\DeskTrace`. Tray menu **Start with Windows** toggles both.
 
 ## Tray + hotkey
 

@@ -1,6 +1,6 @@
 [package]
 name = "desktrace"
-version = "0.2.2"
+version = "0.2.3"
 description = "Local-first desktop time machine"
 authors = ["Steeve-Crypto"]
 edition = "2021"
