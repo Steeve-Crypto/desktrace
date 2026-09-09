@@ -103,12 +103,14 @@ fn url_targets(snap: &Snapshot) -> Vec<serde_json::Value> {
 }
 
 fn launch_exe(target: &str, name: Option<String>) -> RestoreAction {
-    let result = if cfg!(target_os = "windows") {
-        Command::new(target).spawn()
-    } else {
-        Command::new(target).spawn()
-    };
-    match result {
+    let mut cmd = Command::new(target);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    match cmd.spawn() {
         Ok(_) => RestoreAction {
             kind: "exe".into(),
             target: target.into(),

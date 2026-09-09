@@ -63,7 +63,7 @@ pub fn list_apps() -> (Vec<AppRow>, Option<String>) {
         }
     }
     let mut apps: Vec<AppRow> = unique.into_values().collect();
-    apps.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    apps.sort_by_key(|a| a.name.to_lowercase());
     apps.truncate(80);
     (apps, focused)
 }
